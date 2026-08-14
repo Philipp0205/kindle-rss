@@ -9,9 +9,10 @@ Multi-user RSS/Atom reader that extracts readable article HTML and emails EPUB f
 - Add feeds by RSS/Atom URL or homepage (autodiscovery from `<link>` tags,
   feed-like links, and the site's conventional feed paths)
 - Optional quick-start feed suggestions and categories for organizing subscriptions
-- Scheduled refresh every 30 minutes, plus manual refresh, asking each feed for
-  more than the handful of entries it publishes by default
-- Article extraction (Readability4J) with sanitized HTML caching
+- Feeds refresh while you read them, on a 30-minute schedule and on demand,
+  asking each feed for more than the handful of entries it publishes by default
+- Article extraction (Readability4J) with sanitized HTML caching, and Hacker News
+  items read as their submitted text plus the discussion
 - Page-at-a-time reading sized to the device screen, instead of scrolling
 - Send-to-Kindle as EPUB 3 through one shared, provider-verified sender
 - Per-account limits and IP-based rate limiting on auth endpoints
@@ -83,9 +84,11 @@ Tests do not require PostgreSQL or Docker. They cover EPUB layout, HTML sanitiza
    filter bar.
 3. Page through the list; articles you page past are marked read.
 4. Tap an article's title to mark it read and view extracted content (images off by default).
-   An unread list keeps articles opened during that visit in place, so returning
-   to the list does not make the entries jump. A feed-provided discussion link
-   (for example Hacker News comments) remains available beside **Original**.
+   **Back** returns to the list you came from — same feed, category, page and unread
+   selection — and **Feeds** goes to the feed overview, so neither needs the browser's
+   own back button. An unread list keeps articles opened during that visit in place,
+   so returning to the list does not make the entries jump. A feed-provided discussion
+   link (for example Hacker News comments) remains available beside **Original**.
 5. **Send to Kindle** builds an EPUB and emails it; `sent_at` is recorded only after SMTP succeeds.
    With JavaScript available it sends in place, without reloading or moving the
    current page; the normal form submission remains as a no-JavaScript fallback.
@@ -105,6 +108,35 @@ Nothing is thrown away afterwards, so a feed keeps growing past what it
 publishes at any one moment. `ARTICLE_PAGE_SIZE` (50, at most 100) sets how many
 of those articles one page of the list holds; **Older articles** loads the next
 ones.
+
+### When feeds are refreshed
+
+Feeds are fetched every 30 minutes by the scheduler, and again when you open the
+feeds page or an article list after `FEED_AUTO_REFRESH_AFTER` (10 minutes by
+default) has passed since the last refresh of your account. Fetching every feed
+of an account takes longer than a page should, so it runs in the background: the
+page you asked for renders from what is stored, and anything new is on the next
+one. `FEED_AUTO_REFRESH_AFTER=0` leaves refreshing to the schedule and the button.
+
+**Refresh** returns to the page it was pressed on, filters and page number
+included, instead of starting over on the feeds page.
+
+### What "the full article" means
+
+Opening an article fetches the page it links to and extracts the readable part,
+which is then cached. Some pages cannot be read that way — a paywall, a bot wall,
+a PDF — and the article then says so, in place of silently showing the two or
+three lines the feed happened to carry.
+
+Hacker News entries carry no text at all: the feed summary is the article link,
+the comments link and a score. Those are read as follows:
+
+- A story that links elsewhere is fetched and extracted like any other article.
+- An **Ask HN** or text submission links back to its Hacker News item, so the item
+  page is read instead: the submitted text followed by the discussion, with replies
+  indented by how deep they sit.
+- When the linked page cannot be fetched, the discussion is shown instead, with a
+  line saying why. That is not cached, so a page that is readable later still wins.
 
 ## Reading a page at a time
 

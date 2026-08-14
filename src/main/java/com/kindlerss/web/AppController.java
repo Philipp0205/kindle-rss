@@ -65,6 +65,7 @@ public class AppController {
     @GetMapping("/")
     public String home(Model model) {
         long userId = currentUser.requireId();
+        feedService.refreshForUserIfStale(userId);
         List<Feed> feeds = feedService.listFeeds(userId);
         long totalUnread = feeds.stream().mapToLong(Feed::unreadCount).sum();
         model.addAttribute("feeds", feeds);
@@ -186,15 +187,17 @@ public class AppController {
         return "redirect:/";
     }
 
+    /** Refreshing comes back to the page it was asked for, filters and page included. */
     @PostMapping("/refresh")
-    public String refresh(RedirectAttributes redirectAttributes) {
+    public String refresh(@RequestParam(value = "redirect", required = false) String redirect,
+                          RedirectAttributes redirectAttributes) {
         try {
             feedService.refreshForUser(currentUser.requireId());
             redirectAttributes.addFlashAttribute("message", "Feeds refreshed");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Refresh failed: " + e.getMessage());
         }
-        return "redirect:/";
+        return "redirect:" + (redirect == null || redirect.isBlank() ? "/" : safeRedirect(redirect));
     }
 
     @GetMapping("/items")
@@ -208,6 +211,7 @@ public class AppController {
         if (feedId != null && feedService.findById(userId, feedId).isEmpty()) {
             throw new ArticleService.NotFoundException("Feed not found");
         }
+        feedService.refreshForUserIfStale(userId);
         Boolean unreadOnly = Boolean.TRUE.equals(unread) ? Boolean.TRUE : null;
         if (Boolean.TRUE.equals(unread) && snapshot == null) {
             return "redirect:" + itemsPath(feedId, category, true, Math.max(page, 1),
@@ -370,9 +374,14 @@ public class AppController {
         return path.toString();
     }
 
+    /**
+     * @param back the list this article was opened from, so that leaving it again is
+     *             a button on the page rather than the browser's history
+     */
     @GetMapping("/articles/{id}")
     public String article(@PathVariable("id") long id,
                           @RequestParam(value = "images", defaultValue = "false") boolean images,
+                          @RequestParam(value = "back", required = false) String back,
                           Model model) {
         long userId = currentUser.requireId();
         Article article = articleService.findById(userId, id)
@@ -385,6 +394,7 @@ public class AppController {
         model.addAttribute("article", article);
         model.addAttribute("contentHtml", contentHtml);
         model.addAttribute("images", images);
+        model.addAttribute("back", safeRedirect(back));
         model.addAttribute("originalUrl", safeHttpUrl(article.url()));
         model.addAttribute("commentsUrl",
                 articleService.findCommentsUrl(article).map(AppController::safeHttpUrl).orElse(null));
